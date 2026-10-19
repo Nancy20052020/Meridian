@@ -1,20 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { feature } from "topojson-client";
-import type { FeatureCollection } from "geojson";
-import landTopo from "@/data/land-50m.json";
 import { STORM_SLOWDOWN } from "@/lib/delay";
 import { pointOnPath, splitDateline, type LatLon, type Path } from "@/lib/geo";
 
 const Globe = dynamic(() => import("react-globe.gl"), { ssr: false });
 
-const land = feature(
-  landTopo as unknown as Parameters<typeof feature>[0],
-  (landTopo as unknown as { objects: { land: Parameters<typeof feature>[1] } }).objects.land,
-) as unknown as FeatureCollection;
+const emptyLabel = () => "";
 
 type Focus = { lat: number; lng: number; altitude: number };
 
@@ -82,12 +76,36 @@ export default function GlobeView({
     if (typeof window === "undefined") return null;
     return new THREE.MeshPhongMaterial({
       color: new THREE.Color("#071422"),
-      emissive: new THREE.Color("#10243c"),
-      emissiveIntensity: 0.55,
+      emissive: new THREE.Color("#081624"),
+      emissiveIntensity: 0.22,
       shininess: 3,
       specular: new THREE.Color("#081420"),
     });
   }, []);
+
+  useEffect(() => {
+    if (!material) return;
+    let alive = true;
+    const loader = new THREE.TextureLoader();
+    loader.load("/land.png", (texture) => {
+      if (!alive) {
+        texture.dispose();
+        return;
+      }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      material.map = texture;
+      material.color.set("#ffffff");
+      material.needsUpdate = true;
+    });
+    return () => {
+      alive = false;
+      material.map?.dispose();
+      material.dispose();
+    };
+  }, [material]);
+
+  const markReady = useCallback(() => setReady(true), []);
 
   const arcs = useMemo<Arc[]>(() => {
     const gold = splitDateline(path.points);
@@ -176,12 +194,7 @@ export default function GlobeView({
         showGraticules={false}
         globeMaterial={material}
         animateIn={false}
-        polygonsData={land.features}
-        polygonCapColor={() => "#13283d"}
-        polygonSideColor={() => "#0b1a2b"}
-        polygonStrokeColor={() => "rgba(148, 176, 204, 0.16)"}
-        polygonAltitude={0.004}
-        polygonsTransitionDuration={0}
+        enablePointerInteraction={false}
         pathsData={arcs}
         pathPoints="pts"
         pathPointLat="lat"
@@ -196,9 +209,9 @@ export default function GlobeView({
         pointColor="color"
         pointAltitude="alt"
         pointRadius="radius"
-        pointLabel={() => ""}
+        pointLabel={emptyLabel}
         pointsTransitionDuration={0}
-        onGlobeReady={() => setReady(true)}
+        onGlobeReady={markReady}
       />
     </div>
   );

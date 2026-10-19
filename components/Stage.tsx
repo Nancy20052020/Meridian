@@ -41,7 +41,7 @@ export default function Stage() {
     setRate(null);
     setRateFailed(false);
 
-    fetch(`/api/weather?points=${encodeURIComponent(points)}`)
+    fetch(`/api/weather?points=${encodeURIComponent(points)}`, { signal: AbortSignal.timeout(12000) })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("weather"))))
       .then((payload: WeatherPayload) => {
         if (cancelled) return;
@@ -55,7 +55,9 @@ export default function Stage() {
         if (!cancelled) setWeatherFailed(true);
       });
 
-    fetch(`/api/rate?from=${route.origin.currency}&to=${route.home.currency}`)
+    fetch(`/api/rate?from=${route.origin.currency}&to=${route.home.currency}`, {
+      signal: AbortSignal.timeout(12000),
+    })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("rate"))))
       .then((payload: RatePayload) => {
         if (cancelled) return;
