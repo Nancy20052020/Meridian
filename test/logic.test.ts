@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calendarDaysBetween, projectCash } from "../lib/cash";
+import { beatOn, calendarDaysBetween, cashAt, projectCash } from "../lib/cash";
 import { delayHours, slowdown } from "../lib/delay";
 import { buildPath, haversineNm, pointOnPath, splitDateline } from "../lib/geo";
 import { cashLine, delayLine, landingLine } from "../lib/format";
 import { DEFAULT_HOME, DEFAULT_ORIGIN, findRoute, ROUTES } from "../lib/routes";
-import { picture, planVoyage, shipFraction } from "../lib/voyage";
+import { describeMoment } from "../lib/play";
+import { fractionAlong, picture, planVoyage, shipFraction } from "../lib/voyage";
 
 test("a calm leg adds nothing and a gale adds time", () => {
   assert.equal(slowdown(10, 1.2), 0);
@@ -94,6 +95,54 @@ test("a calm picture keeps cash above zero", () => {
   assert.equal(view.cash?.firstZeroAt ?? null, null);
   assert.equal(landingLine(view.daysBeforePayday ?? 0).includes("before payday"), true);
   assert.match(delayLine(0), /no time/);
+});
+
+test("cash on a later day follows the bill, then payday, then the invoice", () => {
+  const now = new Date("2026-10-19T12:00:00Z");
+  const scheduled = new Date("2026-11-02T12:00:00Z");
+  const input = {
+    now,
+    timeZone: "America/Los_Angeles",
+    cashOnHand: 80000,
+    billHome: 62000,
+    invoice: 112000,
+    invoiceDaysAfterLanding: 5,
+    payroll: 44000,
+    scheduledArrival: scheduled,
+    adjustedArrival: new Date(scheduled.getTime() + 3 * 24 * 60 * 60 * 1000),
+    payrollDaysAfterScheduledArrival: 7,
+  };
+  assert.equal(cashAt(input, now), 80000);
+  assert.equal(beatOn(input, input.adjustedArrival), "The bill leaves.");
+  assert.equal(cashAt(input, input.adjustedArrival), 18000);
+  const payrollAt = new Date(scheduled.getTime() + 7 * 24 * 60 * 60 * 1000);
+  assert.equal(beatOn(input, payrollAt), "Cash crosses zero.");
+  assert.ok(cashAt(input, payrollAt) <= 0);
+  const invoiceAt = new Date(input.adjustedArrival.getTime() + 5 * 24 * 60 * 60 * 1000);
+  assert.equal(beatOn(input, invoiceAt), "The invoice arrives.");
+  assert.equal(cashAt(input, invoiceAt), 18000 - 44000 + 112000);
+});
+
+test("the playhead counts the days until landing", () => {
+  const route = findRoute(DEFAULT_ORIGIN, DEFAULT_HOME);
+  const now = new Date("2026-10-19T19:00:00Z");
+  const voyage = planVoyage(route, now);
+  const moment = describeMoment(route, voyage, now, 0, 0, route.cash.supplierBill, [0, 0, 0, 0, 0, 0, 0, 0], false);
+  assert.match(moment.line, /days from landing/);
+  assert.equal(moment.balance, route.cash.cashOnHand);
+  assert.equal(moment.tone, "calm");
+});
+
+test("the ship is further along later, and a delay holds it back", () => {
+  const route = findRoute(DEFAULT_ORIGIN, DEFAULT_HOME);
+  const now = new Date("2026-10-19T19:00:00Z");
+  const voyage = planVoyage(route, now);
+  const later = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const calm = fractionAlong(voyage, 0, now, later);
+  const delayed = fractionAlong(voyage, 48, now, later);
+  assert.ok(calm > voyage.elapsedHours / voyage.scheduledHours);
+  assert.ok(delayed < calm);
+  assert.ok(fractionAlong(voyage, 0, now, voyage.scheduledArrival) > 0.999);
 });
 
 test("every route has a sea lane and a cash book", () => {

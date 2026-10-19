@@ -45,6 +45,12 @@ export function shipFraction(elapsedHours: number, scheduledHours: number, delay
   return Math.min(1, Math.max(0, elapsedHours / total));
 }
 
+/** Where the ship is at `at`, counting weather delay against the whole passage. */
+export function fractionAlong(voyage: Voyage, delayHours: number, now: Date, at: Date): number {
+  const extraHours = (at.getTime() - now.getTime()) / (60 * 60 * 1000);
+  return shipFraction(voyage.elapsedHours + extraHours, voyage.scheduledHours, delayHours);
+}
+
 export function picture(route: Route, voyage: Voyage, weather: WeatherPoint[] | null, rate: number | null, now: Date) {
   const slows =
     weather && weather.length === voyage.samples.length

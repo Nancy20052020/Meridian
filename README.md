@@ -40,7 +40,13 @@ The right side is the cash book, in the home currency.
 
 Dates are the home city's local days.
 
-A rough stretch of the route is a soft amber band on the arc.
+A rough stretch of the route is a soft amber band on the arc. A thin gleam travels the gold line.
+
+## Play the voyage
+
+The ship is already at sea. When the weather has answered, the rest of the passage plays, about sixteen seconds from today through the last cash day. The vessel moves along the arc and leaves a short wake. The line under the track counts the days until landing, and where the amber band is, it says the water is rough.
+
+The day on the track is the home city's day. Cash on that day is the book: the bill leaves when the goods land, payroll stays on its date, and the invoice arrives five days after landing. Drag the track to any day. The figures on the left and the right stay the answer for today.
 
 ## Where each number comes from
 

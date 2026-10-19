@@ -20,21 +20,31 @@ export type CashPicture = {
 
 const DAY = 24 * 60 * 60 * 1000;
 
-export function projectCash(input: CashInput): CashPicture {
+type CashEvent = {
+  at: number;
+  delta: number;
+  rank: number;
+  kind: "bill" | "payroll" | "invoice";
+};
+
+function schedule(input: CashInput) {
   const billAt = input.adjustedArrival;
   const invoiceAt = new Date(billAt.getTime() + input.invoiceDaysAfterLanding * DAY);
   const payrollAt = new Date(
     input.scheduledArrival.getTime() + input.payrollDaysAfterScheduledArrival * DAY,
   );
+  const events: CashEvent[] = [
+    { at: billAt.getTime(), delta: -input.billHome, rank: 0, kind: "bill" },
+    { at: payrollAt.getTime(), delta: -input.payroll, rank: 1, kind: "payroll" },
+    { at: invoiceAt.getTime(), delta: input.invoice, rank: 2, kind: "invoice" },
+  ];
+  events.sort((a, b) => a.at - b.at || a.rank - b.rank);
+  return { billAt, invoiceAt, payrollAt, events: events.filter((event) => event.at >= input.now.getTime()) };
+  return { billAt, invoiceAt, payrollAt, events };
+}
 
-  const events = [
-    { at: billAt.getTime(), delta: -input.billHome, rank: 0 },
-    { at: payrollAt.getTime(), delta: -input.payroll, rank: 1 },
-    { at: invoiceAt.getTime(), delta: input.invoice, rank: 2 },
-  ]
-    .filter((event) => event.at >= input.now.getTime())
-    .sort((a, b) => a.at - b.at || a.rank - b.rank);
-
+export function projectCash(input: CashInput): CashPicture {
+  const { billAt, invoiceAt, payrollAt, events } = schedule(input);
   let balance = input.cashOnHand;
   let firstZeroAt: Date | null = null;
   for (const event of events) {
@@ -43,8 +53,39 @@ export function projectCash(input: CashInput): CashPicture {
       firstZeroAt = new Date(event.at);
     }
   }
-
   return { payrollAt, invoiceAt, billAt, firstZeroAt };
+}
+
+/** Balance after every cash event that has fallen by `at`. */
+export function cashAt(input: CashInput, at: Date): number {
+  if (at.getTime() <= input.now.getTime()) return input.cashOnHand;
+  let balance = input.cashOnHand;
+  for (const event of schedule(input).events) {
+    if (event.at > at.getTime()) break;
+    balance += event.delta;
+  }
+  return balance;
+}
+
+/** The cash event on this home-city day, if the playhead has reached it. */
+export function beatOn(input: CashInput, at: Date): string | null {
+  if (at.getTime() < input.now.getTime()) return null;
+  const key = dayKey(at, input.timeZone);
+  const today = schedule(input).events.filter(
+    (event) => event.at <= at.getTime() && dayKey(new Date(event.at), input.timeZone) === key,
+  );
+  if (today.length === 0) return null;
+  const picture = projectCash(input);
+  if (picture.firstZeroAt && dayKey(picture.firstZeroAt, input.timeZone) === key) {
+    return "Cash crosses zero.";
+  }
+  const kinds = new Set(today.map((event) => event.kind));
+  if (kinds.has("bill") && kinds.has("payroll")) return "The bill leaves on payday.";
+  if (kinds.has("invoice") && kinds.has("payroll")) return "The invoice arrives on payday.";
+  if (kinds.has("bill")) return "The bill leaves.";
+  if (kinds.has("payroll")) return "Payday.";
+  if (kinds.has("invoice")) return "The invoice arrives.";
+  return null;
 }
 
 export function dayKey(date: Date, timeZone: string): string {

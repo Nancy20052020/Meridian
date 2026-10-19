@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import GlobeView from "./GlobeView";
+import PlayBar from "./PlayBar";
 import { afterLanding, cashLine, delayLine, formatDay, landingLine, money } from "@/lib/format";
 import {
   DEFAULT_HOME,
@@ -26,6 +27,7 @@ export default function Stage() {
   const [weatherFailed, setWeatherFailed] = useState(false);
   const [rate, setRate] = useState<number | null>(null);
   const [rateFailed, setRateFailed] = useState(false);
+  const [shipFraction, setShipFraction] = useState<number | null>(null);
 
   const route = useMemo(() => findRoute(originId, homeId), [originId, homeId]);
   const homes = homesFor(originId);
@@ -40,6 +42,7 @@ export default function Stage() {
     setWeatherFailed(false);
     setRate(null);
     setRateFailed(false);
+    setShipFraction(null);
 
     fetch(`/api/weather?points=${encodeURIComponent(points)}`, { signal: AbortSignal.timeout(12000) })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("weather"))))
@@ -84,9 +87,23 @@ export default function Stage() {
     }
   }
 
+  const voyage = useMemo(() => (clock ? planVoyage(route, clock) : null), [route, clock]);
+
   return (
     <main className="stage">
-      {clock ? <Scene route={route} clock={clock} weather={weather} rate={rate} /> : <div className="globe-layer" />}
+      <div className="stars" aria-hidden="true" />
+      {clock && voyage ? (
+        <Scene
+          route={route}
+          clock={clock}
+          weather={weather}
+          rate={rate}
+          voyage={voyage}
+          shipFraction={shipFraction}
+        />
+      ) : (
+        <div className="globe-layer" />
+      )}
       <div className="veil" />
       <div className="ui">
         <header>
@@ -136,7 +153,20 @@ export default function Stage() {
                 : "Position is scheduled progress, plus the weather delay."}
             </p>
           </div>
-          <div />
+          <div className="column-play">
+            {clock && voyage ? (
+              <PlayBar
+                key={`${route.origin.id}-${route.home.id}`}
+                route={route}
+                clock={clock}
+                voyage={voyage}
+                weather={weather}
+                rate={rate}
+                weatherFailed={weatherFailed}
+                onFraction={setShipFraction}
+              />
+            ) : null}
+          </div>
           <CashColumn
             route={route}
             clock={clock}
@@ -156,23 +186,30 @@ function Scene({
   clock,
   weather,
   rate,
+  voyage,
+  shipFraction,
 }: {
   route: Route;
   clock: Date;
   weather: WeatherPoint[] | null;
   rate: number | null;
+  voyage: ReturnType<typeof planVoyage>;
+  shipFraction: number | null;
 }) {
-  const voyage = useMemo(() => planVoyage(route, clock), [route, clock]);
   const view = useMemo(() => picture(route, voyage, weather, rate, clock), [route, voyage, weather, rate, clock]);
+  const ports = useMemo(
+    () => [
+      { lat: route.origin.lat, lon: route.origin.lon },
+      { lat: route.home.lat, lon: route.home.lon },
+    ],
+    [route],
+  );
   return (
     <GlobeView
       path={voyage.path}
       slows={view.slows}
-      shipFraction={view.fraction}
-      ports={[
-        { lat: route.origin.lat, lon: route.origin.lon },
-        { lat: route.home.lat, lon: route.home.lon },
-      ]}
+      shipFraction={shipFraction ?? view.fraction}
+      ports={ports}
       focus={voyage.focus}
     />
   );
