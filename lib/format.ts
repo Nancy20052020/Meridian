@@ -42,6 +42,25 @@ export function formatDay(date: Date, timeZone: string): string {
   return `${day} ${month}`;
 }
 
+export function delayBrief(hours: number): string {
+  const rounded = Math.round(hours);
+  if (rounded < 1) return "Calm";
+  if (rounded < 48) return `${rounded} h`;
+  const days = Math.round((rounded / 24) * 10) / 10;
+  const text = Number.isInteger(days) ? String(days) : days.toFixed(1);
+  return `${text} days`;
+}
+
+export function seaDays(hours: number): string {
+  const days = Math.max(1, Math.round(hours / 24));
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+export function missesPayday(zero: Date | null, payroll: Date, timeZone: string): boolean {
+  const line = cashLine(zero, payroll, timeZone);
+  return line === "Cash crosses zero before payday." || line === "Cash crosses zero on payday.";
+}
+
 export function delayLine(hours: number): string {
   const rounded = Math.round(hours);
   if (rounded < 1) return "The weather adds no time.";

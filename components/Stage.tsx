@@ -1,90 +1,66 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import GlobeView from "./GlobeView";
-import PlayBar from "./PlayBar";
+import Nav from "./Nav";
 import { afterLanding, cashLine, delayLine, formatDay, landingLine, money } from "@/lib/format";
-import {
-  DEFAULT_HOME,
-  DEFAULT_ORIGIN,
-  findRoute,
-  homesFor,
-  origins,
-  type Route,
-} from "@/lib/routes";
+import { fetchRate, fetchWeather } from "@/lib/feeds";
+import { homesFor, laneHref, origins, readExtra, resolveLane, type Route } from "@/lib/routes";
 import { picture, planVoyage, type WeatherPoint } from "@/lib/voyage";
-
-type WeatherPayload = { points: (WeatherPoint & { lat: number; lon: number })[] };
-type RatePayload = { rate: number };
 
 const originList = origins();
 
 export default function Stage() {
-  const [originId, setOriginId] = useState(DEFAULT_ORIGIN);
-  const [homeId, setHomeId] = useState(DEFAULT_HOME);
+  const router = useRouter();
+  const params = useSearchParams();
+  const route = resolveLane(params.get("from"), params.get("to"));
+  const extra = readExtra(params.get("extra"));
+  const originId = route.origin.id;
+  const homeId = route.home.id;
   const [clock, setClock] = useState<Date | null>(null);
   const [weather, setWeather] = useState<WeatherPoint[] | null>(null);
   const [weatherFailed, setWeatherFailed] = useState(false);
   const [rate, setRate] = useState<number | null>(null);
   const [rateFailed, setRateFailed] = useState(false);
-  const [shipFraction, setShipFraction] = useState<number | null>(null);
 
-  const route = useMemo(() => findRoute(originId, homeId), [originId, homeId]);
   const homes = homesFor(originId);
 
   useEffect(() => {
     const opened = new Date();
     const voyage = planVoyage(route, opened);
-    const points = voyage.samples.map((sample) => `${sample.lat.toFixed(3)},${sample.lon.toFixed(3)}`).join(";");
     let cancelled = false;
     setClock(opened);
     setWeather(null);
     setWeatherFailed(false);
     setRate(null);
     setRateFailed(false);
-    setShipFraction(null);
 
-    fetch(`/api/weather?points=${encodeURIComponent(points)}`, { signal: AbortSignal.timeout(12000) })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("weather"))))
-      .then((payload: WeatherPayload) => {
-        if (cancelled) return;
-        if (!payload.points || payload.points.length !== voyage.samples.length) {
-          setWeatherFailed(true);
-          return;
-        }
-        setWeather(payload.points);
-      })
-      .catch(() => {
-        if (!cancelled) setWeatherFailed(true);
-      });
-
-    fetch(`/api/rate?from=${route.origin.currency}&to=${route.home.currency}`, {
-      signal: AbortSignal.timeout(12000),
-    })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("rate"))))
-      .then((payload: RatePayload) => {
-        if (cancelled) return;
-        if (typeof payload.rate !== "number") {
-          setRateFailed(true);
-          return;
-        }
-        setRate(payload.rate);
-      })
-      .catch(() => {
-        if (!cancelled) setRateFailed(true);
-      });
+    fetchWeather(voyage.samples).then((points) => {
+      if (cancelled) return;
+      if (!points) setWeatherFailed(true);
+      else setWeather(points);
+    });
+    fetchRate(route.origin.currency, route.home.currency).then((next) => {
+      if (cancelled) return;
+      if (next == null) setRateFailed(true);
+      else setRate(next);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [route]);
 
+  function write(origin: string, home: string, days: number) {
+    router.replace(laneHref("/", origin, home, days), { scroll: false });
+  }
+
   function chooseOrigin(next: string) {
-    setOriginId(next);
     const available = homesFor(next);
-    if (!available.some((home) => home.id === homeId)) {
-      setHomeId(available[0]?.id ?? homeId);
-    }
+    const home = available.some((port) => port.id === homeId) ? homeId : available[0]?.id ?? homeId;
+    write(next, home, extra);
   }
 
   const voyage = useMemo(() => (clock ? planVoyage(route, clock) : null), [route, clock]);
@@ -93,21 +69,17 @@ export default function Stage() {
     <main className="stage">
       <div className="stars" aria-hidden="true" />
       {clock && voyage ? (
-        <Scene
-          route={route}
-          clock={clock}
-          weather={weather}
-          rate={rate}
-          voyage={voyage}
-          shipFraction={shipFraction}
-        />
+        <Scene route={route} clock={clock} weather={weather} rate={rate} voyage={voyage} />
       ) : (
         <div className="globe-layer" />
       )}
       <div className="veil" />
       <div className="ui">
         <header>
-          <p className="brand">Meridian</p>
+          <div className="brand-row">
+            <p className="brand">Meridian</p>
+            <Nav />
+          </div>
           <h1>Will the goods land before payday?</h1>
         </header>
         <section className="columns">
@@ -127,7 +99,7 @@ export default function Stage() {
               <label className="sr-only" htmlFor="home">
                 Home city
               </label>
-              <select id="home" value={homeId} onChange={(event) => setHomeId(event.target.value)}>
+              <select id="home" value={homeId} onChange={(event) => write(originId, event.target.value, extra)}>
                 {homes.map((home) => (
                   <option key={home.id} value={home.id}>
                     {home.name}
@@ -154,18 +126,11 @@ export default function Stage() {
             </p>
           </div>
           <div className="column-play">
-            {clock && voyage ? (
-              <PlayBar
-                key={`${route.origin.id}-${route.home.id}`}
-                route={route}
-                clock={clock}
-                voyage={voyage}
-                weather={weather}
-                rate={rate}
-                weatherFailed={weatherFailed}
-                onFraction={setShipFraction}
-              />
-            ) : null}
+            <Scenario
+              extra={extra}
+              disabled={!weather || weatherFailed}
+              onChange={(days) => write(originId, homeId, days)}
+            />
           </div>
           <CashColumn
             route={route}
@@ -174,6 +139,7 @@ export default function Stage() {
             weatherFailed={weatherFailed}
             rate={rate}
             rateFailed={rateFailed}
+            extra={extra}
           />
         </section>
       </div>
@@ -187,14 +153,12 @@ function Scene({
   weather,
   rate,
   voyage,
-  shipFraction,
 }: {
   route: Route;
   clock: Date;
   weather: WeatherPoint[] | null;
   rate: number | null;
   voyage: ReturnType<typeof planVoyage>;
-  shipFraction: number | null;
 }) {
   const view = useMemo(() => picture(route, voyage, weather, rate, clock), [route, voyage, weather, rate, clock]);
   const ports = useMemo(
@@ -208,10 +172,43 @@ function Scene({
     <GlobeView
       path={voyage.path}
       slows={view.slows}
-      shipFraction={shipFraction ?? view.fraction}
+      shipFraction={view.fraction}
       ports={ports}
       focus={voyage.focus}
     />
+  );
+}
+
+function Scenario({
+  extra,
+  disabled,
+  onChange,
+}: {
+  extra: number;
+  disabled: boolean;
+  onChange: (days: number) => void;
+}) {
+  const word = extra === 0 ? "None" : extra === 1 ? "1 day" : `${extra} days`;
+  return (
+    <div className="scenario">
+      <div className="label">Further slip</div>
+      <div className="stepper">
+        <button type="button" onClick={() => onChange(extra - 1)} disabled={disabled || extra === 0}>
+          Less
+        </button>
+        <span className="step-value">{word}</span>
+        <button type="button" onClick={() => onChange(extra + 1)} disabled={disabled || extra === 10}>
+          More
+        </button>
+      </div>
+      <p className="note">
+        {disabled
+          ? "The further slip waits on the weather."
+          : extra === 0
+            ? "The book on the right is today's weather. Add days to test a later landing."
+            : `The book on the right adds ${extra === 1 ? "one day" : `${extra} days`} beyond today's weather. It is a scenario.`}
+      </p>
+    </div>
   );
 }
 
@@ -253,6 +250,7 @@ function CashColumn({
   weatherFailed,
   rate,
   rateFailed,
+  extra,
 }: {
   route: Route;
   clock: Date | null;
@@ -260,11 +258,12 @@ function CashColumn({
   weatherFailed: boolean;
   rate: number | null;
   rateFailed: boolean;
+  extra: number;
 }) {
   const home = route.home.currency;
   const billOrigin = money(route.cash.supplierBill, route.origin.currency);
   const ready = Boolean(clock && weather && rate != null);
-  const view = clock ? picture(route, planVoyage(route, clock), weather, rate, clock) : null;
+  const view = clock ? picture(route, planVoyage(route, clock), weather, rate, clock, extra) : null;
   const zero = view?.cash?.firstZeroAt ?? null;
   const payrollAt = view?.cash?.payrollAt ?? (clock ? planVoyage(route, clock).payrollAt : null);
 
@@ -281,6 +280,10 @@ function CashColumn({
 
   return (
     <div className="column column-right">
+      {extra > 0 ? <p className="note">Scenario, not the forecast.</p> : null}
+      {extra > 0 && view?.adjustedArrival ? (
+        <Fact label="Lands, if it slips" value={formatDay(view.adjustedArrival, route.home.timeZone)} />
+      ) : null}
       <Fact label="Cash today" value={money(route.cash.cashOnHand, home)} />
       <Fact
         label="The bill"
@@ -308,6 +311,11 @@ function CashColumn({
       {ready && payrollAt && view?.cash ? (
         <p className="answer">{cashLine(zero, payrollAt, route.home.timeZone)}</p>
       ) : null}
+      <p className="note">
+        <Link className="text-link" href={laneHref("/book", route.origin.id, route.home.id, extra)}>
+          Open the book
+        </Link>
+      </p>
     </div>
   );
 }

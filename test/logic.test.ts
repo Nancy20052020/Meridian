@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { beatOn, calendarDaysBetween, cashAt, projectCash } from "../lib/cash";
+import { beatOn, calendarDaysBetween, cashAt, ledger, projectCash } from "../lib/cash";
 import { delayHours, slowdown } from "../lib/delay";
 import { buildPath, haversineNm, pointOnPath, splitDateline } from "../lib/geo";
 import { cashLine, delayLine, landingLine } from "../lib/format";
 import { DEFAULT_HOME, DEFAULT_ORIGIN, findRoute, ROUTES } from "../lib/routes";
-import { describeMoment } from "../lib/play";
 import { fractionAlong, picture, planVoyage, shipFraction } from "../lib/voyage";
 
 test("a calm leg adds nothing and a gale adds time", () => {
@@ -123,14 +122,53 @@ test("cash on a later day follows the bill, then payday, then the invoice", () =
   assert.equal(cashAt(input, invoiceAt), 18000 - 44000 + 112000);
 });
 
-test("the playhead counts the days until landing", () => {
+test("the book lists cash, then the bill, then payroll, then the invoice", () => {
+  const now = new Date("2026-10-19T12:00:00Z");
+  const scheduled = new Date("2026-11-02T12:00:00Z");
+  const calm = {
+    now,
+    timeZone: "America/Los_Angeles",
+    cashOnHand: 80000,
+    billHome: 62000,
+    invoice: 112000,
+    invoiceDaysAfterLanding: 5,
+    payroll: 44000,
+    scheduledArrival: scheduled,
+    adjustedArrival: scheduled,
+    payrollDaysAfterScheduledArrival: 7,
+  };
+  const lines = ledger(calm);
+  assert.deepEqual(
+    lines.map((line) => line.kind),
+    ["open", "bill", "invoice", "payroll"],
+  );
+  assert.deepEqual(
+    lines.map((line) => line.balance),
+    [80000, 18000, 130000, 86000],
+  );
+  assert.equal(lines.some((line) => line.balance <= 0), false);
+
+  const late = ledger({
+    ...calm,
+    adjustedArrival: new Date(scheduled.getTime() + 3 * 24 * 60 * 60 * 1000),
+  });
+  assert.deepEqual(
+    late.map((line) => line.kind),
+    ["open", "bill", "payroll", "invoice"],
+  );
+  assert.ok(late.some((line) => line.balance <= 0));
+});
+
+test("a further slip moves the landing, not the ship", () => {
   const route = findRoute(DEFAULT_ORIGIN, DEFAULT_HOME);
   const now = new Date("2026-10-19T19:00:00Z");
   const voyage = planVoyage(route, now);
-  const moment = describeMoment(route, voyage, now, 0, 0, route.cash.supplierBill, [0, 0, 0, 0, 0, 0, 0, 0], false);
-  assert.match(moment.line, /days from landing/);
-  assert.equal(moment.balance, route.cash.cashOnHand);
-  assert.equal(moment.tone, "calm");
+  const calm = voyage.samples.map(() => ({ windKnots: 8, waveMeters: 1.2 }));
+  const live = picture(route, voyage, calm, 0.15, now);
+  const slipped = picture(route, voyage, calm, 0.15, now, 3);
+  assert.equal(live.delayHours, 0);
+  assert.equal(slipped.fraction, live.fraction);
+  assert.equal(slipped.adjustedArrival?.getTime(), (live.adjustedArrival?.getTime() ?? 0) + 3 * 24 * 60 * 60 * 1000);
 });
 
 test("the ship is further along later, and a delay holds it back", () => {

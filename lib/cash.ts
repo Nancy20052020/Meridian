@@ -88,6 +88,40 @@ export function beatOn(input: CashInput, at: Date): string | null {
   return null;
 }
 
+export type LedgerLine = {
+  at: Date;
+  kind: "open" | "bill" | "payroll" | "invoice";
+  label: string;
+  delta: number;
+  balance: number;
+};
+
+/** The book in order: cash today, then each outflow and the invoice. */
+export function ledger(input: CashInput): LedgerLine[] {
+  const labels = { bill: "The bill", payroll: "Payroll", invoice: "The invoice" } as const;
+  const lines: LedgerLine[] = [
+    {
+      at: input.now,
+      kind: "open",
+      label: "Cash today",
+      delta: 0,
+      balance: input.cashOnHand,
+    },
+  ];
+  let balance = input.cashOnHand;
+  for (const event of schedule(input).events) {
+    balance += event.delta;
+    lines.push({
+      at: new Date(event.at),
+      kind: event.kind,
+      label: labels[event.kind],
+      delta: event.delta,
+      balance,
+    });
+  }
+  return lines;
+}
+
 export function dayKey(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone,

@@ -285,6 +285,26 @@ export function homesFor(originId: string): Port[] {
   return [...seen.values()];
 }
 
+export function resolveLane(from: string | null, to: string | null): Route {
+  const known = new Set(origins().map((port) => port.id));
+  const originId = from && known.has(from) ? from : DEFAULT_ORIGIN;
+  const homes = homesFor(originId);
+  const homeId = to && homes.some((home) => home.id === to) ? to : homes[0]?.id ?? DEFAULT_HOME;
+  return findRoute(originId, homeId);
+}
+
+export function readExtra(value: string | null): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) return 0;
+  return Math.min(10, parsed);
+}
+
+export function laneHref(path: string, originId: string, homeId: string, extra = 0): string {
+  const query = new URLSearchParams({ from: originId, to: homeId });
+  if (extra > 0) query.set("extra", String(extra));
+  return `${path}?${query.toString()}`;
+}
+
 export function findRoute(originId: string, homeId: string): Route {
   const route = byPair.get(`${originId}:${homeId}`);
   if (!route) {

@@ -51,12 +51,21 @@ export function fractionAlong(voyage: Voyage, delayHours: number, now: Date, at:
   return shipFraction(voyage.elapsedHours + extraHours, voyage.scheduledHours, delayHours);
 }
 
-export function picture(route: Route, voyage: Voyage, weather: WeatherPoint[] | null, rate: number | null, now: Date) {
+export function picture(
+  route: Route,
+  voyage: Voyage,
+  weather: WeatherPoint[] | null,
+  rate: number | null,
+  now: Date,
+  extraDays = 0,
+) {
   const slows =
     weather && weather.length === voyage.samples.length
       ? weather.map((point) => slowdown(point.windKnots, point.waveMeters))
       : null;
-  const delay = slows ? delayHours(slows, voyage.scheduledHours) : null;
+  const weatherDelay = slows ? delayHours(slows, voyage.scheduledHours) : null;
+  const extra = Number.isFinite(extraDays) ? Math.max(0, Math.min(10, Math.floor(extraDays))) : 0;
+  const delay = weatherDelay == null ? null : weatherDelay + extra * 24;
   const adjustedArrival =
     delay == null ? null : new Date(voyage.scheduledArrival.getTime() + delay * 60 * 60 * 1000);
   const billHome = rate == null ? null : route.cash.supplierBill * rate;
@@ -78,10 +87,11 @@ export function picture(route: Route, voyage: Voyage, weather: WeatherPoint[] | 
 
   return {
     slows,
-    delayHours: delay,
+    delayHours: weatherDelay,
+    extraDays: extra,
     adjustedArrival,
     billHome,
-    fraction: shipFraction(voyage.elapsedHours, voyage.scheduledHours, delay ?? 0),
+    fraction: shipFraction(voyage.elapsedHours, voyage.scheduledHours, weatherDelay ?? 0),
     cash,
     daysBeforePayday:
       adjustedArrival == null
