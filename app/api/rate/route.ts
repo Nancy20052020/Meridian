@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { upstream } from "@/lib/upstream";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type CacheEntry = { at: number; body: unknown };
@@ -10,7 +12,7 @@ const TTL = 60 * 60 * 1000;
 const CODE = /^[A-Z]{3}$/;
 
 async function fromOpenEr(from: string, to: string): Promise<{ rate: number; asOf: string } | null> {
-  const response = await fetch("https://open.er-api.com/v6/latest/USD", { cache: "no-store" });
+  const response = await upstream("https://open.er-api.com/v6/latest/USD");
   if (!response.ok) return null;
   const payload = (await response.json()) as {
     result?: string;
@@ -28,10 +30,7 @@ async function fromOpenEr(from: string, to: string): Promise<{ rate: number; asO
 }
 
 async function fromFrankfurter(from: string, to: string): Promise<{ rate: number; asOf: string } | null> {
-  const response = await fetch(
-    `https://api.frankfurter.dev/v1/latest?from=${from}&to=${to}`,
-    { cache: "no-store" },
-  );
+  const response = await upstream(`https://api.frankfurter.dev/v1/latest?from=${from}&to=${to}`);
   if (!response.ok) return null;
   const payload = (await response.json()) as { date?: string; rates?: Record<string, number> };
   const rate = payload.rates?.[to];

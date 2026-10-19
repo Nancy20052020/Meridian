@@ -73,20 +73,21 @@ export default function GlobeView({
 }) {
   const globeRef = useRef<GlobeHandle | null>(null);
   const shown = useRef(shipFraction);
+  const framed = useRef(false);
   const [, setFrame] = useState(0);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [ready, setReady] = useState(false);
 
-  const material = useMemo(
-    () =>
-      new THREE.MeshPhongMaterial({
-        color: new THREE.Color("#071422"),
-        emissive: new THREE.Color("#10243c"),
-        emissiveIntensity: 0.55,
-        shininess: 3,
-        specular: new THREE.Color("#081420"),
-      }),
-    [],
-  );
+  const material = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return new THREE.MeshPhongMaterial({
+      color: new THREE.Color("#071422"),
+      emissive: new THREE.Color("#10243c"),
+      emissiveIntensity: 0.55,
+      shininess: 3,
+      specular: new THREE.Color("#081420"),
+    });
+  }, []);
 
   const arcs = useMemo<Arc[]>(() => {
     const gold = splitDateline(path.points);
@@ -146,9 +147,14 @@ export default function GlobeView({
   }, [shipFraction]);
 
   useEffect(() => {
-    if (size.w === 0) return;
-    globeRef.current?.pointOfView(focus, 900);
-  }, [focus.lat, focus.lng, focus.altitude, size.w]);
+    const globe = globeRef.current;
+    if (!ready || !globe) return;
+    const controls = globe.controls();
+    controls.autoRotate = false;
+    controls.enablePan = false;
+    globe.pointOfView(focus, framed.current ? 900 : 0);
+    framed.current = true;
+  }, [ready, focus.lat, focus.lng, focus.altitude, focus]);
 
   const ship = pointOnPath(path, shown.current);
   const points = [
@@ -156,7 +162,7 @@ export default function GlobeView({
     { ...ship, color: "#f7f4ee", radius: 0.62, alt: 0.02 },
   ];
 
-  if (size.w === 0) return <div className="globe-layer" />;
+  if (size.w === 0 || material == null) return <div className="globe-layer" />;
 
   return (
     <div className="globe-layer" aria-hidden="true">
@@ -192,14 +198,7 @@ export default function GlobeView({
         pointRadius="radius"
         pointLabel={() => ""}
         pointsTransitionDuration={0}
-        onGlobeReady={() => {
-          const controls = globeRef.current?.controls();
-          if (controls) {
-            controls.autoRotate = false;
-            controls.enablePan = false;
-          }
-          globeRef.current?.pointOfView(focus, 0);
-        }}
+        onGlobeReady={() => setReady(true)}
       />
     </div>
   );

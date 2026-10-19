@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { upstream } from "@/lib/upstream";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Point = { lat: number; lon: number };
@@ -55,13 +57,11 @@ export async function GET(request: Request) {
 
   try {
     const [windRes, waveRes] = await Promise.all([
-      fetch(
+      upstream(
         `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=wind_speed_10m,wind_gusts_10m,precipitation&wind_speed_unit=kn`,
-        { cache: "no-store" },
       ),
-      fetch(
+      upstream(
         `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}&current=wave_height`,
-        { cache: "no-store" },
       ),
     ]);
 

@@ -18,6 +18,12 @@ npm test
 npm run build
 ```
 
+## Deploy
+
+Import the repository in Vercel. The framework is Next.js. The install is `npm ci`, the build is `next build`, and Node is 22. No environment variables.
+
+From this directory, `npx vercel` does the same once the CLI is logged in.
+
 ## What the screen is saying
 
 The left side is the route. Scheduled arrival is the passage at 14 knots along that lane. With this weather is the same arrival, plus the delay from the wind and waves on the route.
